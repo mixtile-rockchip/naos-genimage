@@ -1,0 +1,11 @@
+Rockchip secure boot signing
+
+Files: dev.key, dev.crt and dev.pubkey.
+
+Generate an RSA-2048 key, certificate and public key:
+  openssl genrsa -out dev.key 2048
+  openssl req -new -x509 -key dev.key -out dev.crt \
+    -days 3650 -subj "/CN=NAOS Secure Boot"
+  openssl rsa -in dev.key -pubout -out dev.pubkey
+
+Devices with a programmed OTP public-key hash require the matching existing key.

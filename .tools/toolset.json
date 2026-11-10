@@ -1,0 +1,452 @@
+{
+  "files": {
+    "bin/apk": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": null,
+      "needed": [],
+      "path": "bin/apk",
+      "sha256": "9de54b4e3ea869a999842e716c9342e1b359566b161879d5002b715ed1c3a2f3",
+      "size": 5475048,
+      "source": "naos-apk-static-3.0.9",
+      "source_sha256": "9de54b4e3ea869a999842e716c9342e1b359566b161879d5002b715ed1c3a2f3"
+    },
+    "bin/boot_merger": {
+      "architecture": "x86_64",
+      "dynamic": false,
+      "minimum_glibc": null,
+      "needed": [],
+      "path": "bin/boot_merger",
+      "sha256": "f8e1a2d01bc475e9571ab0aec00e4cca3d85bbd4587f3873970560443a237d0c",
+      "size": 2098080,
+      "source": "boot_merger",
+      "source_sha256": "f8e1a2d01bc475e9571ab0aec00e4cca3d85bbd4587f3873970560443a237d0c"
+    },
+    "bin/dtc": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.34",
+      "needed": [
+        "libc.so.6",
+        "libyaml-0.so.2"
+      ],
+      "path": "bin/dtc",
+      "sha256": "bb84ced6b8fade995ea0c837e4ef964e93ca77589a6eb527447d5fa573ebc180",
+      "size": 151241,
+      "source": "dtc",
+      "source_sha256": "bb84ced6b8fade995ea0c837e4ef964e93ca77589a6eb527447d5fa573ebc180"
+    },
+    "bin/fdtget": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.34",
+      "needed": [
+        "libc.so.6",
+        "libfdt.so.1"
+      ],
+      "path": "bin/fdtget",
+      "sha256": "fbfe8c68efcdfa5de041f0eab71f06e7b244ff3a096d6a7c8e4dda8da2dd61c3",
+      "size": 22745,
+      "source": "fdtget",
+      "source_sha256": "fbfe8c68efcdfa5de041f0eab71f06e7b244ff3a096d6a7c8e4dda8da2dd61c3"
+    },
+    "bin/fdtput": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.34",
+      "needed": [
+        "libc.so.6",
+        "libfdt.so.1"
+      ],
+      "path": "bin/fdtput",
+      "sha256": "d1013a4ce53b5419d52b016bd312e48bad27dd3addae7a0b82995d73c9e4a926",
+      "size": 26985,
+      "source": "fdtput",
+      "source_sha256": "d1013a4ce53b5419d52b016bd312e48bad27dd3addae7a0b82995d73c9e4a926"
+    },
+    "bin/fit_check_sign": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.38",
+      "needed": [
+        "libc.so.6",
+        "libcrypto.so.3",
+        "libssl.so.3"
+      ],
+      "path": "bin/fit_check_sign",
+      "sha256": "b82e8d96eb402d0bc865bb4e8381f11ffa64ce3bca8b51891ff69ec45bb6a9f0",
+      "size": 402680,
+      "source": "fit_check_sign",
+      "source_sha256": "b82e8d96eb402d0bc865bb4e8381f11ffa64ce3bca8b51891ff69ec45bb6a9f0"
+    },
+    "bin/mkimage": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.38",
+      "needed": [
+        "libc.so.6",
+        "libcrypto.so.3",
+        "libssl.so.3"
+      ],
+      "path": "bin/mkimage",
+      "sha256": "95d381a987bc6e242a85c836550b8bee4e0e0c20aa63220a7dd70c0d578e349e",
+      "size": 411816,
+      "source": "mkimage",
+      "source_sha256": "95d381a987bc6e242a85c836550b8bee4e0e0c20aa63220a7dd70c0d578e349e"
+    },
+    "bin/mksquashfs": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.38",
+      "needed": [
+        "libc.so.6",
+        "liblz4.so.1",
+        "liblzma.so.5",
+        "liblzo2.so.2",
+        "libm.so.6",
+        "libz.so.1",
+        "libzstd.so.1"
+      ],
+      "path": "bin/mksquashfs",
+      "sha256": "3e1679bdd48213910db2763e4cca00f0388ff776abce41eec576ed5ed74cf314",
+      "size": 301697,
+      "source": "mksquashfs",
+      "source_sha256": "3e1679bdd48213910db2763e4cca00f0388ff776abce41eec576ed5ed74cf314"
+    },
+    "bin/openssl": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.34",
+      "needed": [
+        "libc.so.6",
+        "libcrypto.so.3",
+        "libssl.so.3"
+      ],
+      "path": "bin/openssl",
+      "sha256": "f6c799de486eb6de7f97d32beb53e0666df19689c9ad6a538aa01848fe6bece9",
+      "size": 1115696,
+      "source": "openssl",
+      "source_sha256": "f6c799de486eb6de7f97d32beb53e0666df19689c9ad6a538aa01848fe6bece9"
+    },
+    "bin/rauc": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.34",
+      "needed": [
+        "libc.so.6",
+        "libcrypto.so.3",
+        "libgio-2.0.so.0",
+        "libglib-2.0.so.0",
+        "libgobject-2.0.so.0"
+      ],
+      "path": "bin/rauc",
+      "sha256": "c12d9dc1aad33ec8393b4ec5d4f12998bc7e7762d59cc97895f60101272a285c",
+      "size": 420400,
+      "source": "rauc",
+      "source_sha256": "c12d9dc1aad33ec8393b4ec5d4f12998bc7e7762d59cc97895f60101272a285c"
+    },
+    "bin/rk_sign_tool": {
+      "architecture": "x86_64",
+      "dynamic": false,
+      "minimum_glibc": null,
+      "needed": [],
+      "path": "bin/rk_sign_tool",
+      "sha256": "3c526a824c0bd9990b6479c7f9e8ca99039d7443265f822266fa91ea5f33da7e",
+      "size": 7079296,
+      "source": "rk_sign_tool",
+      "source_sha256": "3c526a824c0bd9990b6479c7f9e8ca99039d7443265f822266fa91ea5f33da7e"
+    },
+    "bin/sqfstar": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.38",
+      "needed": [
+        "libc.so.6",
+        "liblz4.so.1",
+        "liblzma.so.5",
+        "liblzo2.so.2",
+        "libm.so.6",
+        "libz.so.1",
+        "libzstd.so.1"
+      ],
+      "path": "bin/sqfstar",
+      "sha256": "3e1679bdd48213910db2763e4cca00f0388ff776abce41eec576ed5ed74cf314",
+      "size": 301697,
+      "source": "sqfstar",
+      "source_sha256": "3e1679bdd48213910db2763e4cca00f0388ff776abce41eec576ed5ed74cf314"
+    },
+    "bin/unsquashfs": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.38",
+      "needed": [
+        "libc.so.6",
+        "liblz4.so.1",
+        "liblzma.so.5",
+        "liblzo2.so.2",
+        "libm.so.6",
+        "libz.so.1",
+        "libzstd.so.1"
+      ],
+      "path": "bin/unsquashfs",
+      "sha256": "07d12e9cb1c263b035dfda5bd2a95884b071178839b70fb4612c0fd8684dc95b",
+      "size": 157473,
+      "source": "unsquashfs",
+      "source_sha256": "07d12e9cb1c263b035dfda5bd2a95884b071178839b70fb4612c0fd8684dc95b"
+    },
+    "lib/libcrypto.so.3": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.38",
+      "needed": [
+        "libc.so.6"
+      ],
+      "path": "lib/libcrypto.so.3",
+      "sha256": "2c9eb5b4c9f8c669a521580fcc8b86f214a909884ee54e561b63d380f928a621",
+      "size": 6125184,
+      "source": "libcrypto.so.3",
+      "source_sha256": "2c9eb5b4c9f8c669a521580fcc8b86f214a909884ee54e561b63d380f928a621"
+    },
+    "lib/libfdt.so.1": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.14",
+      "needed": [
+        "libc.so.6"
+      ],
+      "path": "lib/libfdt.so.1",
+      "sha256": "ca7256ee2a43b7b5e0ebb7424ca9d8de09dbb230b17b782308ec718777ea21dc",
+      "size": 47704,
+      "source": "libfdt.so.1",
+      "source_sha256": "ca7256ee2a43b7b5e0ebb7424ca9d8de09dbb230b17b782308ec718777ea21dc"
+    },
+    "lib/libffi.so.8": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.38",
+      "needed": [
+        "libc.so.6"
+      ],
+      "path": "lib/libffi.so.8",
+      "sha256": "07ae9b9c0b12a804935f4f1bd8b6f7cc98a3eaa1df967564d4cb706095479660",
+      "size": 59952,
+      "source": "libffi.so.8",
+      "source_sha256": "07ae9b9c0b12a804935f4f1bd8b6f7cc98a3eaa1df967564d4cb706095479660"
+    },
+    "lib/libgio-2.0.so.0": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.38",
+      "needed": [
+        "libc.so.6",
+        "libglib-2.0.so.0",
+        "libgmodule-2.0.so.0",
+        "libgobject-2.0.so.0",
+        "libz.so.1"
+      ],
+      "path": "lib/libgio-2.0.so.0",
+      "sha256": "c0371e4974024697468b42347d54048971ad2e2fdb0e5b4a2c426d44ce1cca01",
+      "size": 2059064,
+      "source": "libgio-2.0.so.0",
+      "source_sha256": "c0371e4974024697468b42347d54048971ad2e2fdb0e5b4a2c426d44ce1cca01"
+    },
+    "lib/libglib-2.0.so.0": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.38",
+      "needed": [
+        "libc.so.6",
+        "libpcre2-8.so.0"
+      ],
+      "path": "lib/libglib-2.0.so.0",
+      "sha256": "7f0f3c08b2e81ee86696b30b9b1c26503cb222471c7e6e456134ef6694541f9d",
+      "size": 1402104,
+      "source": "libglib-2.0.so.0",
+      "source_sha256": "7f0f3c08b2e81ee86696b30b9b1c26503cb222471c7e6e456134ef6694541f9d"
+    },
+    "lib/libgmodule-2.0.so.0": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.34",
+      "needed": [
+        "libc.so.6",
+        "libglib-2.0.so.0"
+      ],
+      "path": "lib/libgmodule-2.0.so.0",
+      "sha256": "78d5b19699bf3377f65e82f2c5655f7359fee086ecd1fc557400fcb0986e654a",
+      "size": 22840,
+      "source": "libgmodule-2.0.so.0",
+      "source_sha256": "78d5b19699bf3377f65e82f2c5655f7359fee086ecd1fc557400fcb0986e654a"
+    },
+    "lib/libgobject-2.0.so.0": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.14",
+      "needed": [
+        "libc.so.6",
+        "libffi.so.8",
+        "libglib-2.0.so.0"
+      ],
+      "path": "lib/libgobject-2.0.so.0",
+      "sha256": "d5509c2bc2cb8989ca408bc7fa022e1ab6b5c9cb1cdaa0569ad44ebfa6dfd483",
+      "size": 412880,
+      "source": "libgobject-2.0.so.0",
+      "source_sha256": "d5509c2bc2cb8989ca408bc7fa022e1ab6b5c9cb1cdaa0569ad44ebfa6dfd483"
+    },
+    "lib/liblz4.so.1": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.14",
+      "needed": [
+        "libc.so.6"
+      ],
+      "path": "lib/liblz4.so.1",
+      "sha256": "7aebea4a503387fa387c0a76c2d72f3b1aec8dc9cdae1f6959ee2ab3b030af6b",
+      "size": 143473,
+      "source": "liblz4.so.1",
+      "source_sha256": "7aebea4a503387fa387c0a76c2d72f3b1aec8dc9cdae1f6959ee2ab3b030af6b"
+    },
+    "lib/liblzma.so.5": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.34",
+      "needed": [
+        "libc.so.6"
+      ],
+      "path": "lib/liblzma.so.5",
+      "sha256": "fbf1a174761c08962c336f57c48f73dce46e3167a83336da133a6f4d423ac334",
+      "size": 195536,
+      "source": "liblzma.so.5",
+      "source_sha256": "fbf1a174761c08962c336f57c48f73dce46e3167a83336da133a6f4d423ac334"
+    },
+    "lib/liblzo2.so.2": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.14",
+      "needed": [
+        "libc.so.6"
+      ],
+      "path": "lib/liblzo2.so.2",
+      "sha256": "2c7bb3004e46b3439f3cdbf7e5c1a8b0e0d14add954173a22cdc39d037d104d2",
+      "size": 135041,
+      "source": "liblzo2.so.2",
+      "source_sha256": "2c7bb3004e46b3439f3cdbf7e5c1a8b0e0d14add954173a22cdc39d037d104d2"
+    },
+    "lib/libpcre2-8.so.0": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.14",
+      "needed": [
+        "libc.so.6"
+      ],
+      "path": "lib/libpcre2-8.so.0",
+      "sha256": "7910fa0a375474f406efe476e599142891d146b5cb8d9b492336ee439485a282",
+      "size": 440912,
+      "source": "libpcre2-8.so.0",
+      "source_sha256": "7910fa0a375474f406efe476e599142891d146b5cb8d9b492336ee439485a282"
+    },
+    "lib/libssl.so.3": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.34",
+      "needed": [
+        "libc.so.6",
+        "libcrypto.so.3"
+      ],
+      "path": "lib/libssl.so.3",
+      "sha256": "3a5acf0e6e79becf29fca1e8c2d73c615eb1c85883135fa15f0e4cd13db46379",
+      "size": 1065320,
+      "source": "libssl.so.3",
+      "source_sha256": "3a5acf0e6e79becf29fca1e8c2d73c615eb1c85883135fa15f0e4cd13db46379"
+    },
+    "lib/libyaml-0.so.2": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.14",
+      "needed": [
+        "libc.so.6"
+      ],
+      "path": "lib/libyaml-0.so.2",
+      "sha256": "6187da703f3b8225be4ebf24f86a61d3f3a7f0a900005836417d32eafb8742ba",
+      "size": 133793,
+      "source": "libyaml-0.so.2",
+      "source_sha256": "6187da703f3b8225be4ebf24f86a61d3f3a7f0a900005836417d32eafb8742ba"
+    },
+    "lib/libz.so.1": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.14",
+      "needed": [
+        "libc.so.6"
+      ],
+      "path": "lib/libz.so.1",
+      "sha256": "1086d637a854102e94bf5cec026f1872ae9416afdfd4cd19a88f18309de0273f",
+      "size": 104960,
+      "source": "libz.so.1",
+      "source_sha256": "1086d637a854102e94bf5cec026f1872ae9416afdfd4cd19a88f18309de0273f"
+    },
+    "lib/libzstd.so.1": {
+      "architecture": "x86_64",
+      "dynamic": true,
+      "minimum_glibc": "2.34",
+      "needed": [
+        "libc.so.6"
+      ],
+      "path": "lib/libzstd.so.1",
+      "sha256": "12aee3d737a7c170fcd679caf63a0df7c9951f877d82a46d9b177c26f0202970",
+      "size": 842608,
+      "source": "libzstd.so.1",
+      "source_sha256": "12aee3d737a7c170fcd679caf63a0df7c9951f877d82a46d9b177c26f0202970"
+    },
+    "share/openssl/openssl.cnf": {
+      "generated": true,
+      "path": "share/openssl/openssl.cnf",
+      "sha256": "96a94c2c105cec96207f459a97f1862393c465e404a75116d4c9977f006be766",
+      "size": 266
+    },
+    "targets/aarch64/fakeroot.apk": {
+      "architecture": "aarch64",
+      "path": "targets/aarch64/fakeroot.apk",
+      "role": "temporary-apk-install-helper",
+      "sha256": "025a98bdef543fa59218d9761b0928c64edd74d75b27b3881a6ced4817bf9dc6",
+      "size": 29175,
+      "source": "fakeroot-1.37.2-r0.apk",
+      "source_sha256": "025a98bdef543fa59218d9761b0928c64edd74d75b27b3881a6ced4817bf9dc6"
+    },
+    "targets/aarch64/libnaos-chown-compat.so": {
+      "architecture": "aarch64",
+      "path": "targets/aarch64/libnaos-chown-compat.so",
+      "role": "temporary-apk-install-helper",
+      "sha256": "d08a6c9bac999f275af5dc596fcfbcef41fa6e7a10281d416e3c99e65d2c41b4",
+      "size": 67064,
+      "source": "libnaos-chown-compat.so",
+      "source_sha256": "d08a6c9bac999f275af5dc596fcfbcef41fa6e7a10281d416e3c99e65d2c41b4"
+    }
+  },
+  "host": {
+    "architecture": "x86_64",
+    "minimum_glibc": "2.38",
+    "os": "linux",
+    "system_loader": "/lib64/ld-linux-x86-64.so.2"
+  },
+  "schema_version": 1,
+  "system_dependencies": [
+    "libc.so.6",
+    "libm.so.6"
+  ],
+  "tools": {
+    "apk": "bin/apk",
+    "boot_merger": "bin/boot_merger",
+    "dtc": "bin/dtc",
+    "fdtget": "bin/fdtget",
+    "fdtput": "bin/fdtput",
+    "fit_check_sign": "bin/fit_check_sign",
+    "mkimage": "bin/mkimage",
+    "mksquashfs": "bin/mksquashfs",
+    "openssl": "bin/openssl",
+    "rauc": "bin/rauc",
+    "rk_sign_tool": "bin/rk_sign_tool",
+    "sqfstar": "bin/sqfstar",
+    "unsquashfs": "bin/unsquashfs"
+  }
+}

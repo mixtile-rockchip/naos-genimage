@@ -1,0 +1,14 @@
+/.venv/
+/build/
+/dist/
+/output/
+/apks/*.apk
+/board/*.dtb
+/key/**
+!/key/**/
+!/key/**/README
+!/key/apk-repository/naos-apk.rsa.pub
+*.egg-info/
+__pycache__/
+*.pyc
+.pytest_cache/

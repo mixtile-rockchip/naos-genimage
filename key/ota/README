@@ -1,0 +1,12 @@
+OTA signing
+
+Files: signing.key.pem and signing.cert.pem.
+
+Generate a signing key and a self-signed development certificate:
+  openssl req -x509 -newkey rsa:3072 -nodes \
+    -keyout signing.key.pem -out signing.cert.pem \
+    -days 3650 -subj "/CN=NAOS OTA" \
+    -addext "basicConstraints=critical,CA:TRUE"
+
+The certificate becomes the RAUC trust certificate in the image.
+Replace development signing material before distributing production firmware.

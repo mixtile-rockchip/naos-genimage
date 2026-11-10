@@ -1,0 +1,19 @@
+Alternative device trees
+========================
+
+Place compiled .dtb files directly in this directory for carrier boards that
+use the same core module and base image. The interactive generator adds a
+Device tree menu when at least one .dtb is present. The default entry uses
+the base board name, such as mixtile-core3588e-v2, and keeps the device tree
+supplied with the image.
+Menu choices show the board names without the .dtb suffix.
+
+The selected filename determines the output board name. For example,
+vision1.dtb produces vision1.img and update bundles containing vision1 in
+their filenames. The original base machine and RAUC compatibility identity
+are retained.
+
+Both the FIT device tree and the device tree embedded in resource.img are
+replaced. Their original internal filenames are preserved for U-Boot.
+Other resource entries, such as logos, are preserved. Input files are not
+modified. Use --dtb PATH or the YAML dtb option for explicit commands.

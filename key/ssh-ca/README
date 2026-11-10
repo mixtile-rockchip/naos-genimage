@@ -1,0 +1,8 @@
+SSH certificate authority
+
+File: ssh_ca_key.pub, the public CA trusted by the generated system.
+
+Generate a CA key pair in a separate signing directory:
+  ssh-keygen -t ed25519 -f ssh_ca_key -C "NAOS SSH CA"
+
+Copy only ssh_ca_key.pub into this directory. Keep the private CA key separately.
