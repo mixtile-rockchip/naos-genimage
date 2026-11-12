@@ -210,8 +210,11 @@ def build(bundle,options,tools,destination,force=False):
         if local_packages:
             installed_rootfs, local_records, local_sboms = install(bundle.file('rootfs.tar.gz'), local_packages, work,
                 apk=tools['apk'], runtime=tools['apk_runtime'], epoch=options['epoch'])
+        # Runtime identity follows the selected board; the input BSP identity
+        # still governs bootloader files, update compatibility and SBOM evidence.
+        rootfs_metadata = dict(metadata,machine=metadata.get('board',metadata['machine']))
         rootfs,root_inventory = prepare_rootfs(bundle.root,work,overlays=options['overlays'],remove=options['remove'],
-            ota_certificate=options['ota_certificate'],ssh_ca=options['ssh_ca'],metadata=metadata,epoch=options['epoch'],
+            ota_certificate=options['ota_certificate'],ssh_ca=options['ssh_ca'],metadata=rootfs_metadata,epoch=options['epoch'],
             source_archive=installed_rootfs)
         if local_records:
             root_inventory['local_apks'] = local_records

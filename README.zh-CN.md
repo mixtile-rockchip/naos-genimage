@@ -156,6 +156,8 @@ Device tree:
 
 第一项使用镜像自带的设备树。选择 `vision1` 后，完整固件命名为 `vision1.img`，输出目录、升级包和 SBOM 文件名也使用 `vision1`。
 
+镜像内 `/usr/lib/naos/version.json` 的 `machine` 也会写为 `vision1`，Core 向更新平台上报的 `system_machine` 随之使用这个名字。使用默认设备树时保留基础板型名称。
+
 `board/` 没有 DTB 时，不显示这一步。自定义 DTB 应适用于同一核心板及所选版本的内核。
 
 ### 调整 A/B 分区容量

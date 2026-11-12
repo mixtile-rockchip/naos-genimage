@@ -156,6 +156,8 @@ Device tree:
 
 The first option uses the device tree supplied with the image. Selecting `vision1` produces `vision1.img`; the output directory, update bundle filenames and SBOM filenames also use `vision1`.
 
+The `machine` field in `/usr/lib/naos/version.json` is also set to `vision1`, so Core reports that name as `system_machine` to the update server. Selecting the default device tree keeps the base board name.
+
 This step is hidden when `board/` contains no DTBs. Custom DTBs must support the same core board and the kernel in the selected image version.
 
 ### Adjust A/B partition sizes

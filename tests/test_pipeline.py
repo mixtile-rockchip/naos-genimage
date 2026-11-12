@@ -179,7 +179,7 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(record['sha256'], hashlib.sha256((output / name).read_bytes()).hexdigest())
         self.assertEqual(list(self.root.glob('.naos-*')), [])
 
-    def test_custom_board_replaces_both_dtb_inputs_and_names_factory_without_changing_base_identity(self):
+    def test_custom_board_updates_runtime_machine_and_preserves_base_compatibility(self):
         captures = {}
         output = self.root/'vision-output'
         custom = self.file('board/vision1.dtb')
@@ -196,10 +196,12 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(result['compatible'],'fixture-v1')
         self.assertEqual(result['device_tree'],info)
         self.assertEqual(captures['version']['board'],'vision1')
-        self.assertEqual(captures['version']['machine'],'fixture-board')
+        self.assertEqual(captures['version']['machine'],'vision1')
+        self.assertEqual(captures['version']['layout_compatible'],'fixture-v1')
         self.assertEqual(captures['os_inputs']['dtb'],prepared)
         self.assertEqual(captures['os_inputs']['resource'],resource)
         self.assertEqual(captures['ota_metadata']['board'],'vision1')
+        self.assertEqual(captures['ota_metadata']['machine'],'fixture-board')
         self.assertEqual(captures['ota_metadata']['compatible'],'fixture-v1')
         self.assertEqual(replace.call_args.args[:3],(bundle.root,'fixture-board',custom))
 
