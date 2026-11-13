@@ -37,13 +37,13 @@ def inspect(packages, work, apk):
         require(len(content) == 1, 'Cannot read local APK metadata: '+package.name)
         entries = [dict(line.split(':', 1) for line in paragraph.splitlines() if ':' in line)
                    for paragraph in content[0].strip().split('\n\n') if paragraph.strip()]
-        require(len(entries) == 1 and all(entries[0].get(field) for field in ('P', 'V', 'A')),
+        require(len(entries) == 1 and all(entries[0].get(field) for field in ('P', 'V', 'A', 'C')),
                 'Invalid local APK metadata: '+package.name)
         fields = entries[0]
         require(fields['P'] not in names, 'Provide only one local APK per package name: '+fields['P'])
         names.add(fields['P'])
         records.append(dict(name=fields['P'], version=fields['V'], architecture=fields['A'],
-                            filename=package.name, sha256=sha256(package)))
+                            filename=package.name, sha256=sha256(package), identity=fields['C']))
     return records
 
 
@@ -139,5 +139,5 @@ def install(source, packages, work, *, apk, runtime=None, epoch=0):
             'APK runtime architecture does not match the image ('+architecture+')')
     preflight(runtime)
     LOG.info('Installing %d local APK(s) in a user namespace; scripts and triggers are enabled',len(packages))
-    output,evidence = run_install(source,copied,records,work,runtime=runtime,epoch=epoch)
+    output,evidence = run_install(source,copied,records,work,apk=apk,runtime=runtime,epoch=epoch)
     return output,records,evidence

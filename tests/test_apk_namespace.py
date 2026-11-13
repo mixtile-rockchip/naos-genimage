@@ -141,17 +141,62 @@ class NamespaceTests(unittest.TestCase):
                 self.assertNotIn('SCHILY.xattr.security.capability',archive.getmember(name).pax_headers)
                 self.assertNotIn('SCHILY.acl.access',archive.getmember(name).pax_headers)
 
-    def test_target_add_keeps_scripts_enabled_for_install_and_simulation(self):
+    def test_target_add_uses_target_repositories_and_keeps_scripts_enabled(self):
         target=Mock()
         ns._add(target,['/.naos-build/packages/app.apk'])
         arguments=target.run.call_args.args[0]
-        self.assertIn('--allow-untrusted',arguments)
-        self.assertIn('--no-network',arguments)
+        self.assertNotIn('--allow-untrusted',arguments)
+        self.assertNotIn('--no-network',arguments)
+        self.assertNotIn('--repositories-file',arguments)
+        self.assertEqual(arguments[arguments.index('--repository')+1],
+                         '/.naos-build/packages/Packages.adb')
         self.assertIn('--preserve-env',arguments)
         self.assertNotIn('--no-scripts',arguments)
         self.assertNotIn('--usermode',arguments)
-        ns._add(target,['/.naos-build/packages/app.apk'],simulate=True)
-        self.assertIn('--simulate',target.run.call_args.args[0])
+
+    def test_build_dns_is_read_only_and_original_resolver_is_restored(self):
+        for original in ('missing', 'file', 'symlink'):
+            with self.subTest(original=original):
+                root=self.root/original
+                (root/'etc').mkdir(parents=True)
+                helper=root/'.naos-build'
+                helper.mkdir()
+                resolver=root/'etc/resolv.conf'
+                if original=='file':
+                    resolver.write_bytes(b'nameserver 192.0.2.11\n')
+                    resolver.chmod(0o640)
+                elif original=='symlink':
+                    resolver.symlink_to('/run/resolv.conf')
+                mounts=[]
+                with patch.dict(ns._RUNTIME, {'mount':'/usr/bin/mount'}), \
+                        patch.object(ns,'run') as execute:
+                    ns.mount_build_resolver(root,helper,mounts,{})
+                self.assertEqual(mounts,[(resolver,False)])
+                self.assertEqual(execute.call_args_list[0].args[0],
+                    ['/usr/bin/mount','--bind','/etc/resolv.conf',resolver])
+                self.assertEqual(execute.call_args_list[1].args[0],
+                    ['/usr/bin/mount','-o','remount,bind,ro',resolver])
+                ns.restore_image_resolver(root,helper)
+                if original=='missing':
+                    self.assertFalse(resolver.exists())
+                elif original=='file':
+                    self.assertEqual(resolver.read_bytes(),b'nameserver 192.0.2.11\n')
+                    self.assertEqual(resolver.stat().st_mode & 0o777,0o640)
+                else:
+                    self.assertTrue(resolver.is_symlink())
+                    self.assertEqual(os.readlink(resolver),'/run/resolv.conf')
+
+    def test_failed_read_only_dns_mount_remains_tracked_for_cleanup(self):
+        root=self.root/'resolver-failure'
+        (root/'etc').mkdir(parents=True)
+        helper=root/'.naos-build'
+        helper.mkdir()
+        mounts=[]
+        with patch.dict(ns._RUNTIME, {'mount':'/usr/bin/mount'}), \
+                patch.object(ns,'run',side_effect=[None,BuildError('read-only mount failed')]):
+            with self.assertRaisesRegex(BuildError,'read-only mount failed'):
+                ns.mount_build_resolver(root,helper,mounts,{})
+        self.assertEqual(mounts,[(root/'etc/resolv.conf',False)])
 
     def test_launcher_reads_worker_result_and_reports_namespace_failures(self):
         work=self.root/'work'
@@ -166,19 +211,19 @@ class NamespaceTests(unittest.TestCase):
             Path(job['result']).write_text('{"sboms":[]}')
             return Mock(wait=Mock(return_value=0))
         with patch.object(ns.subprocess,'Popen',side_effect=success):
-            archive,sboms=ns.run_install(source,[package],[],work,runtime=runtime,epoch=123)
+            archive,sboms=ns.run_install(source,[package],[],work,apk='/usr/bin/apk',runtime=runtime,epoch=123)
         self.assertEqual((archive.read_bytes(),sboms),(b'archive',[]))
         self.assertEqual((work/'namespace-job.json').stat().st_mode&0o777,0o600)
         with patch.object(ns.subprocess,'Popen',return_value=Mock(wait=Mock(return_value=1))):
-            with self.assertRaisesRegex(BuildError,'user namespaces'):
-                ns.run_install(source,[package],[],work,runtime=runtime,epoch=123)
+            with self.assertRaisesRegex(BuildError,'Local APK installation failed'):
+                ns.run_install(source,[package],[],work,apk='/usr/bin/apk',runtime=runtime,epoch=123)
 
     def test_launcher_timeout_terminates_the_worker_group(self):
         process=Mock(pid=4321)
         process.wait.side_effect=[subprocess.TimeoutExpired('unshare',900),0]
         with patch.object(ns.subprocess,'Popen',return_value=process),patch.object(ns.os,'killpg') as kill:
             with self.assertRaisesRegex(BuildError,'timed out'):
-                ns.run_install(self.root/'source',[],[],self.root/'work',
+                ns.run_install(self.root/'source',[],[],self.root/'work',apk='/usr/bin/apk',
                                runtime={**self.runtime(),'proc_mode':'bind'},epoch=0)
         kill.assert_called_once_with(4321,signal.SIGTERM)
 

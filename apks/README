@@ -1,21 +1,28 @@
 Local application packages
 ==========================
 
-Place application .apk files directly in this directory. They are installed
+Place your application .apk files directly in this directory. Names such as
+example-app below are fictional examples; supply your own packages. They are installed
 into the generated system before the files/ configuration replacements.
-Use the device architecture (aarch64 for RK3588) or noarch, not the host
-architecture. Include dependencies that are absent from the base image.
+Use aarch64 or noarch packages. Declare dependencies in the APK metadata.
+The target apk reuses
+installed packages and downloads missing dependencies from the repositories
+configured in the unpacked rootfs. Private dependency APKs can also go here;
+provide only one version for each local package name.
 
 Local package signatures are optional. Repository image downloads continue
-to require their normal signatures. Installation runs offline in a temporary
+to require their normal signatures. Remote dependencies retain normal APK
+signature verification. Installation runs in a temporary
 user namespace and target chroot. Normal APK scripts and triggers execute.
 Target fakeroot preserves file ownership and permission changes. Run the
 generator as a normal user; no sudo, Docker or loop devices are required.
 The host must allow unprivileged namespaces and support target execution.
+Network access is needed when dependencies must be downloaded. APK lifecycle
+scripts, including pre-install and post-install, run during image generation.
 
 Optional setup commands can be packaged as /<package-name>.commands, for
-example /drm-firefox.commands:
-  rc-update add start-firefox default
+example /example-app.commands:
+  rc-update add example-app default
 All packages are installed first, then each commands file runs with /bin/sh
 inside the target environment, with the shell stopping on command errors.
 Use these files to configure the image, such as enabling services for boot.
@@ -23,7 +30,7 @@ A nonzero exit stops generation. Commands files are removed from rootfs and
 APK ownership records after execution.
 
 To include a package's own SBOM, install its SPDX 2.3 JSON document as a
-normal package file, for example /my-app.spdx.json or /sbom.json.
+normal package file, for example /example-addon.spdx.json or /sbom.json.
 After installation, it is extracted and removed from the rootfs. Companion
 .sbom.json summary files are removed too, but not imported as SPDX.
 When image SBOM generation is enabled, the extracted SPDX is merged into

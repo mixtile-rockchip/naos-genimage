@@ -105,35 +105,65 @@ During generation, `files/etc/motd` replaces the `/etc/motd` welcome message, an
 
 ### Preinstall local application APKs
 
-Place application `.apk` files directly in `apks/`:
+Place your application `.apk` files directly in `apks/`. The names `example-app` and `example-addon` below are fictional examples; supply your own packages.
 
 ```text
 apks/
-├── drm-firefox-0.2-r0.apk
-└── my-app-1.0-r0.apk
+├── example-app-1.0-r0.apk
+└── example-addon-1.0-r0.apk
 ```
 
-- Use `aarch64` or `noarch` packages for RK3588.
-- Installation is offline. Include any dependency packages that are missing from the base system in this directory.
+- Use `aarch64` or `noarch` packages.
+- Dependencies are resolved by the target system's APK installer; missing packages are downloaded from its configured repositories.
 - Local packages do not require a signing certificate.
 - APK installation scripts and triggers run normally.
 - If `apks/` is empty, no extra applications are installed.
 
 Local APK installation also requires unprivileged user namespaces and working ARM64 QEMU/binfmt support on the host. Use the menu's requirements check to verify the environment.
 
-#### Enable application services
+#### Application dependencies and installation scripts
 
-An application package can include a `<package-name>.commands` file at its root to enable services or perform other configuration.
+Declare application dependencies in the APK's metadata, such as `depends="libstdc++"` in an APKBUILD. During generation, `/sbin/apk` runs inside the unpacked rootfs and uses its own `/etc/apk/repositories`, architecture, and trusted keys. Dependencies already installed at a suitable version are reused; missing dependencies and their dependencies are downloaded automatically. Generation therefore needs network access when additional packages are required.
 
-For example, `/drm-firefox.commands` in the `drm-firefox` package:
+You can also place dependency APKs in `apks/`, for example for private packages unavailable from the configured repositories. Provide one version per local package name. The APK installer checks dependencies and version constraints; unavailable packages, incompatible versions, or signature errors stop generation.
 
-```sh
-rc-update add start-firefox default
+APK installation scripts and triggers run inside this target environment during image generation. `pre-install` runs before the package's files are unpacked, and `post-install` runs after installation. Put operations that need newly installed files in `post-install`. The optional `.commands` step below runs after all local packages are installed.
+
+#### Package setup commands and SBOM files
+
+Include setup commands and the application's SBOM **inside the APK**. Place the resulting `.apk` in the generator's `apks/` directory. The generator reads these files from the installed package, so separate `.commands` or SBOM files placed beside the APK are not used.
+
+For a package named `example-app`, use the following APK payload layout. These are paths inside the package, as they appear after installation into the target system:
+
+```text
+/
+├── example-app.commands
+├── etc/
+│   └── init.d/
+│       └── example-app
+└── usr/
+    └── share/
+        └── example-app/
+            └── sbom.spdx.json
 ```
 
-The corresponding service script, `/etc/init.d/start-firefox`, must also be included in the APK.
+| File installed by the APK | Purpose |
+| --- | --- |
+| `/example-app.commands` | Optional commands to configure the image after APK installation |
+| `/etc/init.d/example-app` | OpenRC service script; set its permissions to `0755` |
+| `/usr/share/example-app/sbom.spdx.json` | Optional application SBOM in SPDX 2.3 JSON format |
 
-After all application packages are installed, the generator runs each package's `.commands` file. The filename must match the package name; each package uses its own file. A failed command stops generation. After successful execution, the command files are removed from the final system.
+The command filename must be `/<package-name>.commands`, using the `pkgname` recorded in the APK metadata. For `pkgname=example-app`, the path is `/example-app.commands`, including when the archive is named `example-app-1.0-r0.apk`. Permissions of `0644` are sufficient because the generator runs it with `/bin/sh -e` inside the target system.
+
+For example, `/example-app.commands` contains:
+
+```sh
+rc-update add example-app default
+```
+
+After all application packages are installed, the generator runs each package's `.commands` file. A failed command stops generation. After successful execution, the command files are removed from the final system.
+
+For multiple applications, use a separate command file and SBOM directory for each package. For example, a package named `example-addon` can install `/example-addon.commands` and `/usr/share/example-addon/sbom.spdx.json`.
 
 ### Replace the device tree
 
@@ -177,7 +207,11 @@ SBOM generation is enabled by default for production images and disabled for dev
 - `*.spdx.json`: software bill of materials.
 - `*.sbom.json`: manifest summary.
 
-Application APKs can include SPDX 2.3 JSON, such as `/sbom.spdx.json` at the package root. It is extracted after installation and removed from the rootfs. When SBOM generation is enabled, it is merged into the final SBOM.
+To include an application's SBOM, package it as a normal file in the APK. The recommended installed path is `/usr/share/<package-name>/sbom.spdx.json`, as shown in [Package setup commands and SBOM files](#package-setup-commands-and-sbom-files). Each package should use its own directory to avoid file conflicts.
+
+The generator scans files owned by each local APK, in any directory, with names matching `*.spdx.json`, `*.sbom.json`, or `sbom.json` (case-insensitive). For example, `/example-app.spdx.json` is also supported. Documents used for merging must be SPDX 2.3 JSON. Ordinary JSON summaries, such as companion `*.sbom.json` files, are removed but are not merged as SPDX evidence.
+
+These files are extracted and removed from the rootfs during APK installation, even when image SBOM generation is disabled. When it is enabled, the extracted SPDX documents are merged into the final image SBOM. Files added later through the generator's `files/` directory are outside this APK SBOM extraction step.
 
 The selected image version must supply SBOM data. `--sbom` cannot create a complete SBOM for a version that lacks this data.
 

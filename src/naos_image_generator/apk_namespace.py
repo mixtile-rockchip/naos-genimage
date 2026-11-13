@@ -54,12 +54,12 @@ def _environment(epoch=None):
     return result
 
 
-def run_install(source, staged_packages, records, work_dir, *, runtime, epoch):
+def run_install(source, staged_packages, records, work_dir, *, apk, runtime, epoch):
     """Invoke the namespace helper from an ordinary host-user process."""
     work = Path(work_dir).resolve()
     work.mkdir(mode=0o700, parents=True, exist_ok=True)
     mode = proc_mode(runtime)
-    job = {'source': str(Path(source).resolve()),
+    job = {'source': str(Path(source).resolve()), 'apk': str(Path(apk).resolve()),
            'packages': [str(Path(package).resolve()) for package in staged_packages],
            'records': records, 'epoch': epoch,
            'runtime': {name: str(value) if isinstance(value, Path) else value for name, value in runtime.items()},
@@ -90,8 +90,7 @@ def run_install(source, staged_packages, records, work_dir, *, runtime, epoch):
             raise
     if status:
         detail = _diagnostic((work/'namespace.log').read_bytes())
-        raise BuildError('Rootless APK installation failed; verify user namespaces and target-architecture '
-                         'execution support: '+detail)
+        raise BuildError('Local APK installation failed: '+detail)
     result_path = Path(job['result'])
     require(result_path.is_file(), 'APK namespace helper produced no result')
     result = json.loads(result_path.read_text())
@@ -405,15 +404,85 @@ def bootstrap(source, root):
     return {'entries': entries, 'digests': digests}
 
 
-def _add(target, packages, *, simulate=False):
+def prepare_local_repository(root, helper, packages, records, *, apk, env):
+    """Trust only the supplied local APKs without relaxing remote verification."""
+    from Cryptodome.PublicKey import RSA
+
+    require(len(packages) == len(records) and records, 'Local APK repository has no matching packages')
+    directory = helper/'packages'
+    directory.mkdir()
+    archives, constraints = [], []
+    for source, record in zip(packages, records):
+        filename = _safe_name(record['name']+'-'+record['version']+'.apk')
+        require('/' not in filename, 'Invalid local APK repository filename')
+        identity = record.get('identity', '')
+        require(re.fullmatch(r'[A-Za-z0-9+/=]{20,128}', identity) is not None,
+                'Local APK lacks a valid package identity')
+        destination = directory/filename
+        shutil.copyfile(source, destination)
+        archives.append(destination)
+        constraints.append(record['name']+'><'+identity)
+
+    keys = root/'etc/apk/keys'
+    require(keys.is_dir() and keys.resolve().is_relative_to(root.resolve()),
+            'Target APK keys directory is unavailable or unsafe')
+    name = 'naos-build-'+os.urandom(16).hex()
+    private = root.parent/(name+'.pem')
+    public = keys/(name+'.pub')
+    key = RSA.generate(2048)
+    private_created = public_created = False
+    try:
+        with private.open('xb') as stream:
+            private_created = True
+            private.chmod(0o600)
+            stream.write(key.export_key())
+        with public.open('xb') as stream:
+            public_created = True
+            stream.write(key.public_key().export_key() + b'\n')
+        public.chmod(0o644)
+        # Only offline indexing of user-supplied APKs permits absent signatures.
+        # Installation uses the temporary signed index and normal target trust.
+        run([apk, '--allow-untrusted', '--no-network', '--sign-key', private,
+             'mkndx', '--output', directory/'Packages.adb', *archives], env=env,
+            role='local APK index')
+    except BaseException:
+        if public_created:
+            public.unlink(missing_ok=True)
+        raise
+    finally:
+        if private_created:
+            private.unlink(missing_ok=True)
+    return constraints, public
+
+
+def mount_build_resolver(root, helper, mounts, env):
+    """Use host DNS during installation, then restore the image's resolver."""
+    destination = root/'etc/resolv.conf'
+    backup = helper/'original-resolv.conf'
+    require(Path('/etc/resolv.conf').is_file(), 'Host DNS resolver configuration is unavailable')
+    if destination.exists() or destination.is_symlink():
+        require(destination.is_file() or destination.is_symlink(), 'Invalid target DNS resolver configuration')
+        destination.rename(backup)
+    destination.touch(mode=0o644)
+    mount_rootfs([_RUNTIME['mount'], '--bind', '/etc/resolv.conf'], destination, False, mounts, env)
+    run([_RUNTIME['mount'], '-o', 'remount,bind,ro', destination], env=env)
+
+
+def restore_image_resolver(root, helper):
+    destination = root/'etc/resolv.conf'
+    destination.unlink()
+    backup = helper/'original-resolv.conf'
+    if backup.exists() or backup.is_symlink():
+        backup.rename(destination)
+
+
+def _add(target, packages):
     # apk-tools otherwise sanitizes the environment of lifecycle scripts,
     # which would drop the target fakeroot preload and ownership daemon key.
     # Target.run supplies only the deliberately minimal build environment.
-    command = ['/sbin/apk', '--preserve-env', '--allow-untrusted', '--no-network', '--no-cache', '--no-logfile',
-               '--repositories-file', '/dev/null', 'add']
-    if simulate:
-        command.append('--simulate')
-    return target.run(command + packages, reject_apk_errors=True, log_output=not simulate)
+    command = ['/sbin/apk', '--preserve-env', '--no-cache', '--no-logfile',
+               '--repository', '/.naos-build/packages/Packages.adb', 'add']
+    return target.run(command + packages, reject_apk_errors=True)
 
 
 def run_package_commands(root, target, records):
@@ -480,13 +549,6 @@ def _worker(job):
                     '/.naos-build/helper', '/.naos-build/fakeroot.apk'])
         shutil.copyfile(_RUNTIME['ownership_library'], helper/'libnaos-chown-compat.so')
         shutil.copyfile(source, helper/'seed.tar.gz')
-        package_directory = helper/'packages'
-        package_directory.mkdir()
-        packages = []
-        for number, filename in enumerate(job['packages']):
-            relative = f'/.naos-build/packages/{number:04d}.apk'
-            shutil.copyfile(filename, root/relative.lstrip('/'))
-            packages.append(relative)
         devices = root/'dev'
         require(not devices.is_symlink() and (not devices.exists() or devices.is_dir()),
                 'Unsafe APK seed device directory')
@@ -513,23 +575,16 @@ def _worker(job):
         architecture = target.run(['/sbin/apk', '--print-arch'], log_output=False)
         require(all(record['architecture'] in (architecture, 'noarch') for record in records),
                 'Local APK architecture does not match the image ('+architecture+')')
-        sboms, pending = [], list(packages)
-        while pending:
-            selected = None
-            for package in pending:
-                try:
-                    _add(target, [package], simulate=True)
-                except BuildError:
-                    continue
-                selected = [package]
-                break
-            if selected is None:
-                selected = list(pending)
-            _add(target, selected)
-            sboms.extend(_take_sboms(root, records,
-                remove=lambda name: target.run(['/bin/rm', '--', '/'+name], log_output=False)))
-            for package in selected:
-                pending.remove(package)
+        packages, local_key = prepare_local_repository(root, helper, job['packages'], records,
+                                                       apk=job['apk'], env=env)
+        mount_build_resolver(root, helper, mounts, env)
+        # Resolve all supplied identities in one transaction so dependency
+        # scripts always see the requested local packages, including when a
+        # remote repository offers the same name and version.
+        _add(target, packages)
+        sboms = _take_sboms(root, records,
+            remove=lambda name: target.run(['/bin/rm', '--', '/'+name], log_output=False))
+        local_key.unlink()
         run_package_commands(root, target, records)
         installed = {(p['name'],p['version']) for p in
                      _apk_database((root/'lib/apk/db/installed').read_text())}
@@ -538,6 +593,7 @@ def _worker(job):
         target.stop()
         ownership = read_ownership(helper/'ownership.state')
         unmount_rootfs(mounts, env)
+        restore_image_resolver(root, helper)
         shutil.rmtree(helper)
         archive_rootfs(root, output, epoch, ownership, baseline)
         result = Path(job['result'])

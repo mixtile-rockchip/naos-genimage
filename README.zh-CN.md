@@ -105,35 +105,65 @@ files/
 
 ### 预装本地应用 APK
 
-将应用 `.apk` 文件直接放到 `apks/`：
+将自行准备的应用 `.apk` 文件直接放到 `apks/`。下面的 `example-app` 和 `example-addon` 都是虚构示例名称，使用时替换为自己的包。
 
 ```text
 apks/
-├── drm-firefox-0.2-r0.apk
-└── my-app-1.0-r0.apk
+├── example-app-1.0-r0.apk
+└── example-addon-1.0-r0.apk
 ```
 
-- RK3588 使用 `aarch64` 或 `noarch` 包。
-- 安装是离线进行的，基础系统中没有的依赖包也需一起放入此目录。
+- 使用 `aarch64` 或 `noarch` 包。
+- 依赖由目标系统的 APK 安装器解析，缺少的包从其配置的仓库下载。
 - 本地包无需提供签名证书。
 - APK 自带的安装脚本和触发器会正常执行。
 - `apks/` 为空时，不安装额外应用。
 
 使用本地 APK 功能时，主机还需支持非特权用户命名空间，并具备 ARM64 QEMU/binfmt 执行支持。可通过菜单中的检查功能确认环境。
 
-#### 配置应用自启动
+#### 应用依赖与安装脚本
 
-应用包可以在包内根目录放置 `<包名>.commands`，用于启用服务等配置操作。
+在 APK 元数据中声明应用依赖，例如在 APKBUILD 中设置 `depends="libstdc++"`。生成时会在解压后的 rootfs 内调用 `/sbin/apk`，由它使用自己的 `/etc/apk/repositories`、架构和受信任公钥。已安装且版本满足要求的依赖直接复用，缺少的依赖及其递归依赖会自动下载；需要补充软件包时，生成环境应能访问网络。
 
-例如，`drm-firefox` 包中的 `/drm-firefox.commands`：
+也可以把依赖 APK 放入 `apks/`，例如配置仓库中没有的私有包。同一个本地包名只提供一个版本。APK 安装器负责检查依赖和版本约束；缺少软件包、版本不兼容或签名错误都会停止生成。
 
-```sh
-rc-update add start-firefox default
+APK 安装脚本和触发器会在生成镜像时的目标环境中执行。`pre-install` 在包内文件展开前运行，`post-install` 在安装后运行；需要使用新安装文件的操作应放入 `post-install`。下文的可选 `.commands` 步骤则在全部本地包安装完成后执行。
+
+#### 打包配置命令与应用 SBOM
+
+配置命令和应用 SBOM 都应**打进 APK 包内**，再把生成的 `.apk` 放入生成器的 `apks/` 目录。生成器从已安装的包中读取这些文件；仅放在 APK 旁边的独立 `.commands` 或 SBOM 文件不会被使用。
+
+以包名 `example-app` 为例，APK 内容应采用以下布局。这里表示包内文件安装到目标系统后的路径：
+
+```text
+/
+├── example-app.commands
+├── etc/
+│   └── init.d/
+│       └── example-app
+└── usr/
+    └── share/
+        └── example-app/
+            └── sbom.spdx.json
 ```
 
-对应的服务脚本 `/etc/init.d/start-firefox` 也应包含在 APK 中。
+| APK 安装后的文件路径 | 用途 |
+| --- | --- |
+| `/example-app.commands` | 可选的镜像配置命令，在应用 APK 安装完成后执行 |
+| `/etc/init.d/example-app` | OpenRC 服务脚本，权限设为 `0755` |
+| `/usr/share/example-app/sbom.spdx.json` | 可选的应用 SBOM，格式为 SPDX 2.3 JSON |
 
-全部应用包安装完成后，生成器会执行各自的 `.commands` 文件。文件名必须与包名一致，多个包各用自己的文件。命令失败会停止生成；成功后，命令文件会从最终系统中移除。
+命令文件必须命名为 `/<包名>.commands`，包名取自 APK 元数据中的 `pkgname`。当 `pkgname=example-app` 时，路径就是 `/example-app.commands`；即使 APK 文件名为 `example-app-1.0-r0.apk`，也不带版本号。命令文件权限为 `0644` 即可，生成器会在目标系统内使用 `/bin/sh -e` 执行。
+
+例如，`/example-app.commands` 的内容为：
+
+```sh
+rc-update add example-app default
+```
+
+全部应用包安装完成后，生成器会执行各自的 `.commands` 文件。命令失败会停止生成；成功后，命令文件会从最终系统中移除。
+
+多个应用包各用自己的命令文件和 SBOM 目录。例如，包名为 `example-addon` 时，可以包含 `/example-addon.commands` 和 `/usr/share/example-addon/sbom.spdx.json`。
 
 ### 更换设备树
 
@@ -177,7 +207,11 @@ userdata 在完整固件中初始为 32 MiB，设备首次启动后自动扩容�
 - `*.spdx.json`：软件物料清单。
 - `*.sbom.json`：清单摘要。
 
-应用 APK 可携带 SPDX 2.3 JSON，例如包内根目录的 `/sbom.spdx.json`。安装后会取出，原文件不留在 rootfs 中；开启 SBOM 时会合并到最终清单。
+应用 SBOM 应作为普通文件打进 APK，推荐安装路径为 `/usr/share/<包名>/sbom.spdx.json`，见[打包配置命令与应用 SBOM](#打包配置命令与应用-sbom)。每个包使用自己的目录，避免文件冲突。
+
+生成器会扫描各本地 APK 所拥有的文件，目录不限，识别 `*.spdx.json`、`*.sbom.json` 和 `sbom.json`，文件名匹配不区分大小写；例如 `/example-app.spdx.json` 也支持。用于合并的文档必须为 SPDX 2.3 JSON。普通 JSON 摘要（如配套的 `*.sbom.json` 文件）会移除，但不会作为 SPDX 证据合并。
+
+这些文件在 APK 安装过程中被取出并从 rootfs 中移除，即使没有开启整机 SBOM 也会执行。开启整机 SBOM 时，取出的 SPDX 文档会合并到最终镜像清单。之后通过生成器 `files/` 目录添加的文件，不在这一步 APK SBOM 提取范围内。
 
 开启此功能需要所选镜像版本提供 SBOM 数据；未提供数据的版本不能仅通过 `--sbom` 补出清单。
 

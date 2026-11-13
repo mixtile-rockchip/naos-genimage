@@ -167,6 +167,7 @@ class ApkFixtureTests(unittest.TestCase):
         package = make_apk(self.root / 'business-application.apk', name='custom-application',
                            version='2.5-r3', architecture='noarch')
         record, = local_apks.inspect([package], self.root, self.apk)
+        self.assertRegex(record.pop('identity'), r'^[QX][0-9][A-Za-z0-9+/=]+$')
         self.assertEqual(record, dict(name='custom-application', version='2.5-r3',
                          architecture='noarch', filename='business-application.apk',
                          sha256=hashlib.sha256(package.read_bytes()).hexdigest()))
@@ -194,14 +195,17 @@ class ApkFixtureTests(unittest.TestCase):
             self.assertIs(selected, runtime)
             events.append('preflight')
 
-        def namespace(seed, packages, records, work, *, runtime, epoch):
+        def namespace(seed, packages, records, work, *, apk, runtime, epoch):
             events.append('namespace')
             self.assertEqual(seed, source)
             self.assertEqual(epoch, 123456)
+            self.assertEqual(apk, self.apk)
             self.assertEqual(len(packages), 1)
             self.assertNotEqual(packages[0], app)
             self.assertEqual(packages[0].read_bytes(), original)
-            self.assertEqual(records, [dict(name='business', version='1.0-r0', architecture='aarch64',
+            public_record = dict(records[0])
+            self.assertRegex(public_record.pop('identity'), r'^[QX][0-9][A-Za-z0-9+/=]+$')
+            self.assertEqual([public_record], [dict(name='business', version='1.0-r0', architecture='aarch64',
                 filename='business.apk', sha256=hashlib.sha256(original).hexdigest())])
             return output, evidence
 
