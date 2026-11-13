@@ -30,6 +30,14 @@ class FilesystemError(ValueError):
 
 _DATABASE = "lib/apk/db/installed"
 _VERSION = "usr/lib/naos/version.json"
+_BOOT_CONFIRM = "etc/init.d/naos-boot-confirm"
+_BOOT_MACHINE_CHECK = re.compile(
+    rb"(^[ \t]*![ \t]+grep[ \t]+-q[ \t]+"
+    + re.escape(b"'\"machine\"[[:space:]]*:[[:space:]]*\"")
+    + rb")([^'\"\r\n]+)("
+    + re.escape(b"\"'")
+    + rb"[ \t]+/run/naos/lower/usr/lib/naos/version\.json[ \t]+\|\|[ \t]*(?:\\)?[ \t]*$)",
+    re.MULTILINE)
 _FINGERPRINT = "usr/lib/naos/system-key.sha256"
 _METADATA = frozenset(("etc/alpine-release", "etc/os-release", "usr/lib/os-release", _VERSION))
 _MODULE = re.compile(r"\.ko(?:\.(?:xz|gz|zst))?$")
@@ -556,6 +564,39 @@ def _old_inventory(bundle):
     return value.get('rootfs', value)
 
 
+def _sync_boot_confirmation(entries, archive, machine, previous_machine):
+    """Keep the existing boot guard aligned with the generated product name."""
+    entry = entries.get(_BOOT_CONFIRM)
+    if entry is None:
+        return
+    _require(isinstance(machine, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+-]*', machine),
+             'Invalid boot-confirmation machine identifier')
+    if not entry.info.isfile() or entry.info.size > _CHUNK:
+        _require(machine == previous_machine,
+                 'Cannot synchronize the custom boot-confirmation script; '
+                 'update etc/init.d/naos-boot-confirm for the selected board')
+        return
+    with _entry_data(entry, archive) as stream:
+        script = stream.read()
+    matches = list(_BOOT_MACHINE_CHECK.finditer(script))
+    if len(matches) != 1 or not re.fullmatch(rb'[A-Za-z0-9][A-Za-z0-9._+-]*',
+                                          matches[0].group(2).replace(rb'\.', b'.')):
+        _require(machine == previous_machine,
+                 'Cannot synchronize the custom boot-confirmation machine check; '
+                 'update etc/init.d/naos-boot-confirm for the selected board')
+        return
+    # The existing guard uses grep BRE: dots need escaping, while an unescaped
+    # plus is already literal. Never interpolate a board name as shell code.
+    expected = machine.replace('.', r'\.').encode('ascii')
+    match = matches[0]
+    updated = script[:match.start(2)] + expected + script[match.end(2):]
+    if updated != script:
+        info = copy.copy(entry.info)
+        info.size = len(updated)
+        info.pax_headers = {key: value for key, value in info.pax_headers.items() if key != 'size'}
+        _put(entries, _BOOT_CONFIRM, _TarEntry(info, updated))
+
+
 def prepare_rootfs(bundle, work, overlays=(), remove=(), ota_certificate=None, ssh_ca=None,
                    metadata=None, epoch=0, source_archive=None):
     """Merge edits into a tar, preserving target ownership, nodes and links.
@@ -611,12 +652,15 @@ def prepare_rootfs(bundle, work, overlays=(), remove=(), ota_certificate=None, s
                         _require(entries[_VERSION].info.size <= 65536, 'Version marker exceeds size limit')
                         version = json.load(stream)
                     _require(isinstance(version, dict), 'Version marker is not a JSON object')
+                previous_machine = version.get('machine')
                 for field in ('machine', 'board', 'version', 'build_id', 'layout_compatible',
                               'secure_boot', 'system_encryption', 'data_encryption'):
                     value = metadata.get(field, metadata.get('defaults', {}).get(field))
                     if value is not None:
                         version[field] = value
                 _inline(entries, _VERSION, (json.dumps(version, sort_keys=True, indent=2) + '\n').encode())
+                if version.get('machine') is not None:
+                    _sync_boot_confirmation(entries, archive, version['machine'], previous_machine)
             _materialize_original_links(original, entries)
             _directory_parents(entries)
             with (os.fdopen(fd, 'wb') as raw,

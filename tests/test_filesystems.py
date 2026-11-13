@@ -1,10 +1,13 @@
 import base64
+import copy
 import gzip
 import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
+import shlex
 import shutil
 import stat
 import subprocess
@@ -16,6 +19,8 @@ from naos_image_generator import filesystems as fs
 
 
 KEY = b'0123456789abcdef' * 4
+BOOT_CONFIRM = 'etc/init.d/naos-boot-confirm'
+LEGACY_BOOT_CONFIRM = (Path(__file__).parent / 'fixtures/naos-boot-confirm.legacy').read_bytes()
 
 
 def make_tar(path):
@@ -35,6 +40,8 @@ def make_tar(path):
                 ('lib/apk/db/installed',database,0,0,0o644),
                 ('etc/example.conf',old,0,0,0o640),
                 ('home/naos/data',b'owned by the target user',1000,1000,0o600),
+                (BOOT_CONFIRM,LEGACY_BOOT_CONFIRM.replace(b'mixtile-core3588e-v2',b'test-board')
+                    .replace(b'naos-test-board-nano-v1',b'test-layout'),0,0,0o755),
                 ('usr/lib/naos/version.json',version,0,0,0o644)):
             info = tarfile.TarInfo(name)
             info.size, info.uid, info.gid, info.mode = len(data), uid, gid, mode
@@ -149,6 +156,151 @@ class FilesystemTests(unittest.TestCase):
             fs.prepare_rootfs(self.bundle,self.bundle / 'work',epoch=222)
         with self.assertRaises(fs.FilesystemError):
             fs.prepare_rootfs(self.bundle,self.root / 'bad',remove=['../outside'],epoch=222)
+
+    def run_boot_confirmation(self, archive_path, version_changes=None):
+        """Execute the generated service with temporary stubs, never real RAUC."""
+        with tempfile.TemporaryDirectory(dir=self.root) as directory:
+            runtime = Path(directory)
+            with tarfile.open(archive_path) as archive:
+                script = archive.extractfile(BOOT_CONFIRM).read().decode()
+                version = json.load(archive.extractfile('usr/lib/naos/version.json'))
+            version.update(version_changes or {})
+            lower = runtime / 'lower'
+            marker = lower / 'usr/lib/naos/version.json'
+            marker.parent.mkdir(parents=True)
+            marker.write_text(json.dumps(version))
+            binary = runtime / 'bin'
+            binary.mkdir()
+            for name, body in (
+                    ('init', 'exit 0'), ('prepare-slots', 'exit 0'),
+                    ('mountpoint', 'exit 0'), ('sleep', 'exit 0'),
+                    ('naos-core', '[ "$*" = boot-check ]'),
+                    ('rauc', '[ "$*" = "status mark-good booted" ] || exit 1\n'
+                             'printf "confirmed\\n" >> "$MARK_EVENTS"')):
+                program = binary / name
+                program.write_text('#!/bin/sh\n' + body + '\n')
+                program.chmod(0o755)
+            for original, replacement in (
+                    ('/usr/lib/naos/prepare-slots', binary / 'prepare-slots'),
+                    ('/usr/bin/naos-core', binary / 'naos-core'),
+                    ('/usr/bin/rauc', binary / 'rauc'),
+                    ('/sbin/init', binary / 'init'),
+                    ('/run/naos/lower', lower), ('/run/naos/data', runtime / 'data')):
+                script = script.replace(original, shlex.quote(str(replacement)))
+            service = runtime / 'service'
+            service.write_text(script)
+            events = runtime / 'marked'
+            environment = dict(os.environ, PATH=f'{binary}:/usr/bin:/bin', MARK_EVENTS=str(events))
+            result = subprocess.run(['/bin/sh', '-c',
+                'ebegin() { :; }; eend() { :; }; . "$1"; start', 'fixture', str(service)],
+                env=environment, capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.stderr, '')
+            return result.returncode, events.read_text() if events.exists() else ''
+
+    def test_boot_confirmation_follows_runtime_machine_and_preserves_other_checks(self):
+        with tarfile.open(self.bundle / 'rootfs.tar.gz') as archive:
+            original = archive.extractfile(BOOT_CONFIRM).read()
+        for index, machine in enumerate(('custom-device', 'device.rev+2')):
+            with self.subTest(machine=machine):
+                output, inventory = fs.prepare_rootfs(self.bundle, self.root / f'board-{index}',
+                    metadata=dict(machine=machine), epoch=222)
+                with tarfile.open(output) as archive:
+                    script = archive.extractfile(BOOT_CONFIRM).read()
+                    self.assertEqual(archive.getmember(BOOT_CONFIRM).mode, 0o755)
+                    version = json.load(archive.extractfile('usr/lib/naos/version.json'))
+                self.assertEqual(version['machine'], machine)
+                self.assertEqual(version['layout_compatible'], 'test-layout')
+                self.assertNotIn('bsp_machine', version)
+                self.assertEqual(script, original.replace(b'"test-board"',
+                    b'"' + machine.replace('.', r'\.').encode() + b'"'))
+                self.assertIn(BOOT_CONFIRM, [change['path'] for change in inventory['generator_changes']])
+                self.assertEqual(self.run_boot_confirmation(output), (0, 'confirmed\n'))
+                wrong_machine = machine.replace('.', 'X') if '.' in machine else 'another-device'
+                self.assertEqual(self.run_boot_confirmation(output, {'machine': wrong_machine}), (1, ''))
+                self.assertEqual(self.run_boot_confirmation(output,
+                    {'layout_compatible': 'another-layout'}), (1, ''))
+        self.assertEqual(fs._file_digest(self.bundle / 'rootfs.tar.gz'), self.original_hash)
+
+    def test_boot_confirmation_update_is_idempotent(self):
+        metadata = dict(machine='device.rev+2')
+        first, _ = fs.prepare_rootfs(self.bundle, self.root / 'first', metadata=metadata, epoch=222)
+        second, _ = fs.prepare_rootfs(self.bundle, self.root / 'second', metadata=metadata,
+            source_archive=first, epoch=222)
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+        self.assertEqual(self.run_boot_confirmation(second), (0, 'confirmed\n'))
+        self.assertEqual(fs._file_digest(self.bundle / 'rootfs.tar.gz'), self.original_hash)
+
+    def test_unknown_boot_confirmation_requires_explicit_customization_when_renaming(self):
+        original = LEGACY_BOOT_CONFIRM.replace(b'mixtile-core3588e-v2', b'test-board') \
+            .replace(b'naos-test-board-nano-v1', b'test-layout')
+        for index, custom in enumerate((original.replace(b'grep -q', b'grep -Eq'),
+                                       original.replace(b'"test-board"', b'".*"'))):
+            with self.subTest(index=index):
+                overlay = self.root / f'custom-overlay-{index}'
+                service = overlay / BOOT_CONFIRM
+                service.parent.mkdir(parents=True)
+                service.write_bytes(custom)
+                service.chmod(0o755)
+                with self.assertRaisesRegex(fs.FilesystemError, 'boot.confirmation'):
+                    fs.prepare_rootfs(self.bundle, self.root / f'unknown-{index}', overlays=[overlay],
+                        metadata=dict(machine='custom-device'), epoch=222)
+                self.assertEqual(service.read_bytes(), custom)
+                output, _ = fs.prepare_rootfs(self.bundle, self.root / f'unchanged-custom-{index}',
+                    overlays=[overlay], metadata=dict(machine='test-board'), epoch=222)
+                with tarfile.open(output) as archive:
+                    self.assertEqual(archive.extractfile(BOOT_CONFIRM).read(), custom)
+        self.assertEqual(fs._file_digest(self.bundle / 'rootfs.tar.gz'), self.original_hash)
+
+    def test_boot_confirmation_preserves_same_machine_custom_links(self):
+        for kind in ('symlink', 'hardlink'):
+            with self.subTest(kind=kind):
+                overlay = self.root / kind
+                service = overlay / BOOT_CONFIRM
+                service.parent.mkdir(parents=True)
+                target = service.parent / 'custom-boot-check'
+                target.write_bytes(b'#!/bin/sh\nexit 0\n')
+                target.chmod(0o755)
+                if kind == 'symlink':
+                    service.symlink_to(target.name)
+                else:
+                    os.link(target, service)
+                output, _ = fs.prepare_rootfs(self.bundle, self.root / f'links-{kind}',
+                    overlays=[overlay], metadata=dict(machine='test-board'), epoch=222)
+                with tarfile.open(output) as archive:
+                    member = archive.getmember(BOOT_CONFIRM)
+                    self.assertTrue(member.issym() if kind == 'symlink' else member.islnk())
+                with self.assertRaisesRegex(fs.FilesystemError, 'boot.confirmation'):
+                    fs.prepare_rootfs(self.bundle, self.root / f'renamed-links-{kind}', overlays=[overlay],
+                        metadata=dict(machine='custom-device'), epoch=222)
+
+    def test_boot_confirmation_updates_pax_size_without_truncation_or_padding(self):
+        source = self.bundle / 'rootfs.tar.gz'
+        repacked = self.root / 'pax-rootfs.tar.gz'
+        with tarfile.open(source) as original, tarfile.open(repacked, 'w:gz') as target:
+            for member in original:
+                info = copy.copy(member)
+                if member.name == BOOT_CONFIRM:
+                    info.pax_headers = {'size': str(info.size), 'comment': 'identity fixture'}
+                target.addfile(info, original.extractfile(member) if member.isfile() else None)
+        repacked.replace(source)
+        before = fs._file_digest(source)
+        for index, machine in enumerate(('x', 'a-much-longer-device-name')):
+            with self.subTest(machine=machine):
+                output, _ = fs.prepare_rootfs(self.bundle, self.root / f'pax-{index}',
+                    metadata=dict(machine=machine), epoch=222)
+                with tarfile.open(output) as archive:
+                    script = archive.extractfile(BOOT_CONFIRM).read()
+                    self.assertNotIn(b'\0', script)
+                    self.assertEqual(archive.getmember(BOOT_CONFIRM).size, len(script))
+                    self.assertEqual(archive.getmember(BOOT_CONFIRM).pax_headers['comment'], 'identity fixture')
+                self.assertEqual(self.run_boot_confirmation(output), (0, 'confirmed\n'))
+        self.assertEqual(fs._file_digest(source), before)
+
+    def test_boot_confirmation_rejects_invalid_machine_identifiers(self):
+        for index, machine in enumerate(('', 'bad"name', 'board;exit 0', '../board')):
+            with self.subTest(machine=machine), self.assertRaises(fs.FilesystemError):
+                fs.prepare_rootfs(self.bundle, self.root / f'invalid-{index}',
+                    metadata=dict(machine=machine), epoch=222)
 
     def test_cpio_metadata_crc_hardlinks_and_key_fingerprint(self):
         source = self.cpio()

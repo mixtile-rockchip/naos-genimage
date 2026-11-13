@@ -1,0 +1,38 @@
+#!/sbin/openrc-run
+description="NAOS boot confirmation after system and configured business checks"
+
+depend() {
+    need rauc naos-core
+    after sshd
+}
+
+start() {
+    ebegin "Confirming the NAOS system slot"
+    if ! /usr/lib/naos/prepare-slots ||
+        ! test -x /sbin/init ||
+        ! mountpoint -q /run/naos/lower ||
+        ! mountpoint -q /run/naos/data ||
+        ! test -s /run/naos/lower/usr/lib/naos/version.json ||
+        ! grep -q '"machine"[[:space:]]*:[[:space:]]*"mixtile-core3588e-v2"' /run/naos/lower/usr/lib/naos/version.json ||
+        ! grep -q '"layout_compatible"[[:space:]]*:[[:space:]]*"naos-mixtile-core3588e-v2-nano-v1"' /run/naos/lower/usr/lib/naos/version.json; then
+        eend 1
+        return 1
+    fi
+    if ! /usr/bin/naos-core boot-check; then
+        eend 1
+        return 1
+    fi
+    # supervise-daemon may report the process started before it owns its bus
+    # name. Allow service registration to finish before confirming the slot.
+    attempts=0
+    while [ "$attempts" -lt 30 ]; do
+        if /usr/bin/rauc status mark-good booted; then
+            eend 0
+            return 0
+        fi
+        attempts=$((attempts + 1))
+        sleep 1
+    done
+    eend 1
+    return 1
+}

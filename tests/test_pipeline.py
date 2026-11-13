@@ -14,6 +14,10 @@ from naos_image_generator import common, config, pipeline
 from naos_image_generator.common import BuildError
 
 
+BOOT_CONFIRM = 'etc/init.d/naos-boot-confirm'
+LEGACY_BOOT_CONFIRM = (Path(__file__).parent / 'fixtures/naos-boot-confirm.legacy').read_bytes()
+
+
 class PipelineTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -109,14 +113,17 @@ class PipelineTests(unittest.TestCase):
     def mock_image_build(self, stack, captures):
         """Real tar editing, mocked host tools/storage; all output files are tiny."""
         source = self.root / 'export'
-        source.mkdir()
+        source.mkdir(exist_ok=True)
         (source / 'export.json').write_text('{"schema_version":1}\n')
         with tarfile.open(source / 'rootfs.tar.gz', 'w:gz') as archive:
             for name, data in (
                     ('lib/apk/db/installed', b'P:fixture\nV:1.0-r0\nA:aarch64\nL:MIT\n\n'),
-                    ('usr/lib/naos/version.json', b'{"version":"old","build_id":"old"}\n')):
+                    (BOOT_CONFIRM, LEGACY_BOOT_CONFIRM.replace(b'mixtile-core3588e-v2', b'fixture-board')
+                        .replace(b'naos-fixture-board-nano-v1', b'fixture-v1')),
+                    ('usr/lib/naos/version.json',
+                     b'{"machine":"fixture-board","version":"old","build_id":"old"}\n')):
                 info = tarfile.TarInfo(name)
-                info.size, info.mode = len(data), 0o644
+                info.size, info.mode = len(data), 0o755 if name == BOOT_CONFIRM else 0o644
                 archive.addfile(info, io.BytesIO(data))
         for name in ('initramfs.cpio.gz', 'Image', 'fixture-board.dtb', 'resource.img', 'naos-uboot-env.bin'):
             (source / name).write_bytes(b'fixture')
@@ -132,6 +139,7 @@ class PipelineTests(unittest.TestCase):
             with tarfile.open(archive_path) as archive:
                 captures['version'] = json.load(archive.extractfile('usr/lib/naos/version.json'))
                 captures['apk_database'] = archive.extractfile('lib/apk/db/installed').read()
+                captures['boot_confirm'] = archive.extractfile(BOOT_CONFIRM).read()
             destination.write_bytes(b'hsqs' + bytes(92))
 
         def firmware(bundle_root, work, output, *args):
@@ -150,7 +158,7 @@ class PipelineTests(unittest.TestCase):
         def ota(output, work, metadata, *args, **kwargs):
             captures['ota_metadata'] = metadata.copy()
             (output / 'system.raucb').write_bytes(b'signed bundle fixture')
-            return {'system': 'system.raucb'}
+            return {'system.raucb': {'signature_verified': True}}
 
         stack.enter_context(patch('naos_image_generator.filesystems.prepare_initramfs', side_effect=ramdisk))
         stack.enter_context(patch('naos_image_generator.filesystems.make_squashfs', side_effect=squashfs))
@@ -180,30 +188,37 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(list(self.root.glob('.naos-*')), [])
 
     def test_custom_board_updates_runtime_machine_and_preserves_base_compatibility(self):
-        captures = {}
-        output = self.root/'vision-output'
         custom = self.file('board/vision1.dtb')
         prepared = self.file('prepared/fixture-board.dtb',b'new device tree')
         resource = self.file('prepared/resource.img',b'new resource image')
         info = dict(name='vision1',filename='vision1.dtb',model='vision1',original_name='fixture-board.dtb')
-        with ExitStack() as stack:
-            bundle = self.mock_image_build(stack,captures)
-            replace = stack.enter_context(patch('naos_image_generator.boards.prepare',return_value=(prepared,resource,info)))
-            result = pipeline.build(bundle,self.options(dtb=custom,board_name='vision1',ota=True),{'sqfstar':'fixture'},output)
-        self.assertTrue((output/'vision1.img').is_file())
-        self.assertEqual(result['board'],'vision1')
-        self.assertEqual(result['machine'],'fixture-board')
-        self.assertEqual(result['compatible'],'fixture-v1')
-        self.assertEqual(result['device_tree'],info)
-        self.assertEqual(captures['version']['board'],'vision1')
-        self.assertEqual(captures['version']['machine'],'vision1')
-        self.assertEqual(captures['version']['layout_compatible'],'fixture-v1')
-        self.assertEqual(captures['os_inputs']['dtb'],prepared)
-        self.assertEqual(captures['os_inputs']['resource'],resource)
-        self.assertEqual(captures['ota_metadata']['board'],'vision1')
-        self.assertEqual(captures['ota_metadata']['machine'],'fixture-board')
-        self.assertEqual(captures['ota_metadata']['compatible'],'fixture-v1')
-        self.assertEqual(replace.call_args.args[:3],(bundle.root,'fixture-board',custom))
+        for ota_only in (False, True):
+            with self.subTest(ota_only=ota_only):
+                captures = {}
+                output = self.root / ('vision-updates' if ota_only else 'vision-output')
+                with ExitStack() as stack:
+                    bundle = self.mock_image_build(stack,captures)
+                    replace = stack.enter_context(patch('naos_image_generator.boards.prepare',
+                        return_value=(prepared,resource,info)))
+                    result = pipeline.build(bundle,self.options(dtb=custom,board_name='vision1',
+                        ota=True,ota_only=ota_only),{'sqfstar':'fixture'},output)
+                self.assertEqual((output/'vision1.img').is_file(), not ota_only)
+                self.assertEqual(result['board'],'vision1')
+                self.assertEqual(result['machine'],'fixture-board')
+                self.assertEqual(result['compatible'],'fixture-v1')
+                self.assertEqual(result['device_tree'],info)
+                self.assertEqual(captures['version']['board'],'vision1')
+                self.assertEqual(captures['version']['machine'],'vision1')
+                self.assertEqual(captures['version']['layout_compatible'],'fixture-v1')
+                self.assertIn(b'''"machine"[[:space:]]*:[[:space:]]*"vision1"''', captures['boot_confirm'])
+                self.assertIn(b'''"layout_compatible"[[:space:]]*:[[:space:]]*"fixture-v1"''',
+                    captures['boot_confirm'])
+                self.assertEqual(captures['os_inputs']['dtb'],prepared)
+                self.assertEqual(captures['os_inputs']['resource'],resource)
+                self.assertEqual(captures['ota_metadata']['board'],'vision1')
+                self.assertEqual(captures['ota_metadata']['machine'],'fixture-board')
+                self.assertEqual(captures['ota_metadata']['compatible'],'fixture-v1')
+                self.assertEqual(replace.call_args.args[:3],(bundle.root,'fixture-board',custom))
 
     def test_final_publish_failure_restores_marked_output_and_cleans_both_staging_dirs(self):
         output = self.root / 'output'
