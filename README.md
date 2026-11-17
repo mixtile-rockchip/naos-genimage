@@ -123,7 +123,7 @@ Local APK installation also requires unprivileged user namespaces and working AR
 
 #### Preinstall NAOS container APKs
 
-Place container APKs produced by [NAOS Docker Converter](https://github.com/mixtile-rockchip/naos-docker-converter) in `apks/` as well. When an imported APK installs `var/lib/naos/containers/<id>/manifest.yml` and the adjacent `rootfs/`, the generator replaces the default `[container] manifest=/userdata/manifest.yml` with that installed manifest path in the image's `/etc/naos-core/device.ini`. A missing manifest setting uses the same default. This adjustment runs after `files/` is applied; your source configuration and other settings, including `enabled`, are not modified.
+Place container APKs produced by [NAOS Docker Converter](https://github.com/mixtile-rockchip/naos-docker-converter) in `apks/` as well. When an imported APK installs `var/lib/naos/containers/<id>/manifest.yml` and the adjacent `rootfs/`, the generator replaces the default `[container] manifest=/userdata/manifest.yml` with that installed manifest path and sets `enabled=true` in the image's `/etc/naos-core/device.ini`. A missing manifest setting uses the same default. This adjustment runs after `files/` is applied; your source configuration and the remaining settings are preserved.
 
 An explicitly configured nondefault manifest value, including an empty value, is preserved. If several container APKs are imported while the default manifest is still selected, generation stops and asks you to specify the desired path in `files/etc/naos-core/device.ini`. Ordinary application APKs do not change the container configuration.
 

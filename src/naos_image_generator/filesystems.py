@@ -619,10 +619,10 @@ def _imported_container_manifests(inventory, records):
 
 
 def _container_ini(text, manifest):
-    """Edit only the manifest field, retaining comments and other settings."""
+    """Configure default business startup, retaining comments and other settings."""
     newline = '\r\n' if '\r\n' in text else '\n'
     lines = text.splitlines(keepends=True)
-    values, found = {'manifest': manifest}, set()
+    values, found = {'enabled': 'true', 'manifest': manifest}, set()
     active, end = False, None
     for index, line in enumerate(lines):
         section = re.fullmatch(r'[ \t]*\[([^]\r\n]+)\][ \t]*(?:[;#].*)?', line.rstrip('\r\n'))
@@ -634,7 +634,7 @@ def _container_ini(text, manifest):
                 end = len(lines)
             continue
         if active:
-            match = re.fullmatch(r'([ \t]*)(manifest)([ \t]*=[ \t]*)(.*?)([ \t]+[;#].*|[;#].*|[ \t]*)',
+            match = re.fullmatch(r'([ \t]*)(enabled|manifest)([ \t]*=[ \t]*)(.*?)([ \t]+[;#].*|[;#].*|[ \t]*)',
                                  line.rstrip('\r\n'))
             if match:
                 ending = line[len(line.rstrip('\r\n')):]

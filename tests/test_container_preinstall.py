@@ -33,6 +33,11 @@ class ContainerPreinstallTests(unittest.TestCase):
     def manifest(name):
         return f'/var/lib/naos/containers/{name}/manifest.yml'
 
+    @classmethod
+    def startup_config(cls, configuration=DEFAULT):
+        return configuration.replace(b'/userdata/manifest.yml', cls.manifest('business').encode()).replace(
+            b'enabled=false', b'enabled=true')
+
     def write_archive(self, target, containers, *, configuration=DEFAULT, ordinary=False, missing_rootfs=False):
         database = 'P:base\nV:1.0-r0\nA:aarch64\nL:MIT\n\n'
         files = {}
@@ -80,7 +85,7 @@ class ContainerPreinstallTests(unittest.TestCase):
                   for p in (self.source, self.bundle / 'rootfs.tar.gz', config)}
         output, inventory = self.prepare(overlays=[overlay])
         text, entry = self.read_config(output)
-        self.assertEqual(text, DEFAULT.replace(b'/userdata/manifest.yml', self.manifest('business').encode()))
+        self.assertEqual(text, self.startup_config())
         self.assertEqual((entry.uid, entry.gid, entry.mode), (42, 43, 0o600))
         self.assertIn(CONFIG, [item['path'] for item in inventory['generator_changes']])
         for path, digest in hashes.items():
@@ -138,7 +143,7 @@ class ContainerPreinstallTests(unittest.TestCase):
                 source_archive=self.source, local_apks=records)
             self.assertEqual(self.read_config(output)[0], configuration)
 
-    def test_missing_manifest_uses_the_builtin_default_without_enabling_container(self):
+    def test_missing_manifest_uses_the_builtin_default_and_enables_container(self):
         configuration = b'[container]\n# Keep this setting\nenabled=false\n\n[http]\nenabled=true\n'
         self.write_archive(self.source, ['business'], configuration=configuration)
         output, _ = self.prepare()
@@ -146,11 +151,11 @@ class ContainerPreinstallTests(unittest.TestCase):
         parsed = configparser.ConfigParser()
         parsed.read_string(text.decode())
         self.assertEqual(parsed.get('container', 'manifest'), self.manifest('business'))
-        self.assertEqual(parsed.get('container', 'enabled'), 'false')
+        self.assertEqual(parsed.get('container', 'enabled'), 'true')
         self.assertIn(b'# Keep this setting\n', text)
         self.assertEqual((entry.uid, entry.gid, entry.mode), (42, 43, 0o640))
 
-    def test_missing_section_or_file_gets_only_the_manifest_setting(self):
+    def test_missing_section_or_file_gets_the_startup_settings(self):
         for index, configuration in enumerate((b'# Existing file\n[http]\nenabled=true', None)):
             self.write_archive(self.source, ['business'], configuration=configuration)
             output, _ = fs.prepare_rootfs(self.bundle, self.root / f'no-section-{index}',
@@ -158,7 +163,7 @@ class ContainerPreinstallTests(unittest.TestCase):
             text, entry = self.read_config(output)
             parsed = configparser.ConfigParser()
             parsed.read_string(text.decode())
-            self.assertEqual(dict(parsed['container']), {'manifest': self.manifest('business')})
+            self.assertEqual(dict(parsed['container']), {'enabled': 'true', 'manifest': self.manifest('business')})
             if configuration is not None:
                 self.assertTrue(text.startswith(configuration))
             else:
@@ -178,23 +183,36 @@ class ContainerPreinstallTests(unittest.TestCase):
         configuration = DEFAULT.replace(b'\n', b'\r\n')
         self.write_archive(self.source, ['business'], configuration=configuration)
         output, _ = self.prepare()
-        self.assertEqual(self.read_config(output)[0], configuration.replace(
-            b'/userdata/manifest.yml', self.manifest('business').encode()))
+        self.assertEqual(self.read_config(output)[0], self.startup_config(configuration))
 
     def test_quoted_default_path_is_updated(self):
         configuration = DEFAULT.replace(b'manifest=/userdata/manifest.yml', b'manifest="/userdata/manifest.yml"')
         self.write_archive(self.source, ['business'], configuration=configuration)
         output, _ = self.prepare()
-        self.assertEqual(self.read_config(output)[0], DEFAULT.replace(
-            b'/userdata/manifest.yml', self.manifest('business').encode()))
+        self.assertEqual(self.read_config(output)[0], self.startup_config())
 
     def test_unknown_section_and_case_distinct_key_do_not_supply_the_manifest_value(self):
         configuration = b'[DEFAULT]\nmanifest=/userdata/unrelated/manifest.yml\n[container]\nManifest=/userdata/also-unrelated/manifest.yml\nenabled=false\n'
         self.write_archive(self.source, ['business'], configuration=configuration)
         output, _ = self.prepare()
         text, _ = self.read_config(output)
-        self.assertTrue(text.startswith(configuration))
+        self.assertTrue(text.startswith(configuration.replace(b'enabled=false', b'enabled=true')))
         self.assertTrue(text.endswith(b'manifest=' + self.manifest('business').encode() + b'\n'))
+
+    def test_missing_enabled_is_added_and_already_enabled_is_not_duplicated(self):
+        for index, value in enumerate((None, 'true')):
+            configuration = b'[container]\nmanifest=/userdata/manifest.yml\n'
+            if value is not None:
+                configuration += b'enabled=true\n'
+            self.write_archive(self.source, ['business'], configuration=configuration)
+            output, _ = fs.prepare_rootfs(self.bundle, self.root / f'enabled-{index}',
+                source_archive=self.source, local_apks=self.records)
+            text, _ = self.read_config(output)
+            parsed = configparser.ConfigParser()
+            parsed.read_string(text.decode())
+            self.assertEqual(parsed.get('container', 'manifest'), self.manifest('business'))
+            self.assertEqual(parsed.get('container', 'enabled'), 'true')
+            self.assertEqual(text.count(b'enabled='), 1)
 
 
 if __name__ == '__main__':

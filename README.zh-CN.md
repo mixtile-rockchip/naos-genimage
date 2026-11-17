@@ -123,7 +123,7 @@ apks/
 
 #### 预装 NAOS 容器 APK
 
-将 [NAOS Docker Converter](https://github.com/mixtile-rockchip/naos-docker-converter) 生成的容器 APK 同样放入 `apks/`。本次导入的 APK 安装了 `var/lib/naos/containers/<id>/manifest.yml` 及相邻的 `rootfs/` 后，生成器会把镜像内 `/etc/naos-core/device.ini` 中默认的 `[container] manifest=/userdata/manifest.yml` 替换为该容器的安装路径；缺少此配置项时也按默认值处理。此设置在应用 `files/` 后写入，不修改源配置文件及 `enabled` 等其他配置项。
+将 [NAOS Docker Converter](https://github.com/mixtile-rockchip/naos-docker-converter) 生成的容器 APK 同样放入 `apks/`。本次导入的 APK 安装了 `var/lib/naos/containers/<id>/manifest.yml` 及相邻的 `rootfs/` 后，生成器会把镜像内 `/etc/naos-core/device.ini` 中默认的 `[container] manifest=/userdata/manifest.yml` 替换为该容器的安装路径，同时设置 `enabled=true`；缺少 manifest 配置项时也按默认值处理。此设置在应用 `files/` 后写入，源配置文件及其余配置项保持原样。
 
 用户已配置的非默认 manifest 值会原样保留，包括显式设置的空值。同时导入多个容器 APK 且 manifest 仍为默认值时，生成会提示错误，要求在 `files/etc/naos-core/device.ini` 中指定所需路径。普通应用 APK 不改变容器配置。
 
