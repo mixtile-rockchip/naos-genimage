@@ -215,7 +215,7 @@ def build(bundle,options,tools,destination,force=False):
         rootfs_metadata = dict(metadata,machine=metadata.get('board',metadata['machine']))
         rootfs,root_inventory = prepare_rootfs(bundle.root,work,overlays=options['overlays'],remove=options['remove'],
             ota_certificate=options['ota_certificate'],ssh_ca=options['ssh_ca'],metadata=rootfs_metadata,epoch=options['epoch'],
-            source_archive=installed_rootfs)
+            source_archive=installed_rootfs,local_apks=local_records)
         if local_records:
             root_inventory['local_apks'] = local_records
             root_inventory['additional_sbom'] = local_sboms

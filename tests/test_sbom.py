@@ -214,6 +214,33 @@ class SBOMTests(unittest.TestCase):
         self.assertEqual(supplier["checksums"][0]["checksumValue"], expected)
         self.assertNotEqual(supplier["checksums"], current["checksums"])
 
+    def test_file_only_embedded_apk_sbom_can_describe_its_checksummed_file(self):
+        record = self.embedded_apk()
+        supplier = record["document"]
+        supplier["packages"] = []
+        supplier["relationships"] = []
+        supplier["documentDescribes"] = ["SPDXRef-binary"]
+        expected = copy.deepcopy(supplier["files"][0]["checksums"])
+        summary, document = self.render()
+        imported = next(item for item in document["files"]
+                        if item["fileName"] == "supplier-apk:/usr/bin/business")
+        self.assertEqual(imported["checksums"], expected)
+        self.assertEqual(summary["embedded_apk_sbom_elements"], 1)
+        installed = next(item for item in document["packages"]
+                         if item["name"] == "business" and item["SPDXID"].startswith("SPDXRef-package-apk-"))
+        self.assertTrue(any(item["spdxElementId"] == installed["SPDXID"]
+                            and item["relationshipType"] == "GENERATED_FROM"
+                            and item["relatedSpdxElement"] == imported["SPDXID"]
+                            for item in document["relationships"]))
+        self.assertTrue(summary["references_closed"])
+
+    def test_embedded_apk_sbom_document_describes_absent_element_is_rejected(self):
+        record = self.embedded_apk()
+        record["document"]["documentDescribes"] = ["SPDXRef-missing"]
+        record["document"]["relationships"] = []
+        with self.assertRaisesRegex(ValueError, "describes an absent element"):
+            self.render()
+
     def test_embedded_apk_sbom_modified_document_is_rejected(self):
         record = self.embedded_apk()
         record["sha256"] = "0"*64

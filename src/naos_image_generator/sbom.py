@@ -378,11 +378,12 @@ def _embedded_sbom(document, record, apk_nodes, final, file_nodes):
         if target == supplier["SPDXID"] and kind == "DESCRIBED_BY":
             described.add(source)
     package_ids = {old_id for field, old_id, _ in imported if field == "packages"}
+    element_ids = {old_id for _, old_id, _ in imported}
     if not described and len(package_ids) == 1:
         described = package_ids
     for old_id in sorted(described):
-        if old_id not in package_ids:
-            raise ValueError("Embedded SBOM describes an absent package")
+        if old_id not in element_ids:
+            raise ValueError("Embedded SBOM describes an absent element")
         document.relation(installed, "GENERATED_FROM", nodes[old_id],
                           "Supplier release evidence; final installed files are inventoried separately.")
     return len(imported)

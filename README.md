@@ -121,6 +121,12 @@ apks/
 
 Local APK installation also requires unprivileged user namespaces and working ARM64 QEMU/binfmt support on the host. Use the menu's requirements check to verify the environment.
 
+#### Preinstall NAOS container APKs
+
+Place container APKs produced by [NAOS Docker Converter](https://github.com/mixtile-rockchip/naos-docker-converter) in `apks/` as well. When an imported APK installs `var/lib/naos/containers/<id>/manifest.yml` and the adjacent `rootfs/`, the generator replaces the default `[container] manifest=/userdata/manifest.yml` with that installed manifest path in the image's `/etc/naos-core/device.ini`. A missing manifest setting uses the same default. This adjustment runs after `files/` is applied; your source configuration and other settings, including `enabled`, are not modified.
+
+An explicitly configured nondefault manifest value, including an empty value, is preserved. If several container APKs are imported while the default manifest is still selected, generation stops and asks you to specify the desired path in `files/etc/naos-core/device.ini`. Ordinary application APKs do not change the container configuration.
+
 #### Application dependencies and installation scripts
 
 Declare application dependencies in the APK's metadata, such as `depends="libstdc++"` in an APKBUILD. During generation, `/sbin/apk` runs inside the unpacked rootfs and uses its own `/etc/apk/repositories`, architecture, and trusted keys. Dependencies already installed at a suitable version are reused; missing dependencies and their dependencies are downloaded automatically. Generation therefore needs network access when additional packages are required.

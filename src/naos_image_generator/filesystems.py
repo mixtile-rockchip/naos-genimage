@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
+import configparser
 from dataclasses import dataclass
 import gzip
 import hashlib
@@ -31,6 +32,8 @@ class FilesystemError(ValueError):
 _DATABASE = "lib/apk/db/installed"
 _VERSION = "usr/lib/naos/version.json"
 _BOOT_CONFIRM = "etc/init.d/naos-boot-confirm"
+_CORE_CONFIG = "etc/naos-core/device.ini"
+_CONTAINER_MANIFEST = re.compile(r"var/lib/naos/containers/([A-Za-z0-9][A-Za-z0-9_.-]{0,127})/manifest\.yml")
 _BOOT_MACHINE_CHECK = re.compile(
     rb"(^[ \t]*![ \t]+grep[ \t]+-q[ \t]+"
     + re.escape(b"'\"machine\"[[:space:]]*:[[:space:]]*\"")
@@ -597,8 +600,107 @@ def _sync_boot_confirmation(entries, archive, machine, previous_machine):
         _put(entries, _BOOT_CONFIRM, _TarEntry(info, updated))
 
 
+def _imported_container_manifests(inventory, records):
+    """Recognize container payloads owned by this invocation's local APKs."""
+    identities = {(item['name'], item['version'], item['architecture']) for item in records}
+    files = {item['path']: item for item in inventory['files']}
+    candidates = set()
+    for package in inventory['packages']:
+        if (package['name'], package['version'], package['architecture']) not in identities:
+            continue
+        for item in package['files']:
+            name = item['path']
+            if not _CONTAINER_MANIFEST.fullmatch(name):
+                continue
+            rootfs = str(PurePosixPath(name).parent / 'rootfs')
+            if files.get(name, {}).get('kind') == 'regular' and files.get(rootfs, {}).get('kind') == 'directory':
+                candidates.add('/' + name)
+    return sorted(candidates)
+
+
+def _container_ini(text, manifest):
+    """Edit only the manifest field, retaining comments and other settings."""
+    newline = '\r\n' if '\r\n' in text else '\n'
+    lines = text.splitlines(keepends=True)
+    values, found = {'manifest': manifest}, set()
+    active, end = False, None
+    for index, line in enumerate(lines):
+        section = re.fullmatch(r'[ \t]*\[([^]\r\n]+)\][ \t]*(?:[;#].*)?', line.rstrip('\r\n'))
+        if section:
+            if active:
+                end = index
+            active = section[1] == 'container'
+            if active:
+                end = len(lines)
+            continue
+        if active:
+            match = re.fullmatch(r'([ \t]*)(manifest)([ \t]*=[ \t]*)(.*?)([ \t]+[;#].*|[;#].*|[ \t]*)',
+                                 line.rstrip('\r\n'))
+            if match:
+                ending = line[len(line.rstrip('\r\n')):]
+                lines[index] = match[1] + match[2] + match[3] + values[match[2]] + match[5] + ending
+                found.add(match[2])
+    if active:
+        end = len(lines)
+    if end is None:
+        if lines and not lines[-1].endswith(('\n', '\r')):
+            lines[-1] += newline
+        if lines and lines[-1].strip():
+            lines.append(newline)
+        lines.append('[container]' + newline)
+        end = len(lines)
+    if end and not lines[end - 1].endswith(('\n', '\r')):
+        lines[end - 1] += newline
+    lines[end:end] = [key + '=' + value + newline for key, value in values.items() if key not in found]
+    return ''.join(lines)
+
+
+def _configure_imported_container(entries, archive, candidates):
+    if not candidates:
+        return
+    entry = entries.get(_CORE_CONFIG)
+    text = ''
+    if entry is not None:
+        _require(entry.info.isfile() and entry.info.size <= _CHUNK,
+                 'Core device.ini must be a regular file of at most 1 MiB')
+        try:
+            with _entry_data(entry, archive) as stream:
+                text = stream.read().decode('utf-8')
+        except UnicodeDecodeError as error:
+            raise FilesystemError('Core device.ini must use UTF-8') from error
+    config = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=('#', ';'))
+    config.optionxform = str
+    try:
+        config.read_string(text)
+    except configparser.Error as error:
+        raise FilesystemError('Cannot configure the preinstalled container: invalid Core device.ini') from error
+    # Core treats DEFAULT as an unknown section rather than inherited values.
+    config.defaults().clear()
+    configured = config.get('container', 'manifest', fallback='/userdata/manifest.yml').strip()
+    if len(configured) >= 2 and configured[0] in ('"', "'", '`') and configured[-1] == configured[0]:
+        configured = configured[1:-1]
+    if configured != '/userdata/manifest.yml':
+        return
+    _require(len(candidates) == 1,
+             'Multiple container APKs were imported; set [container] manifest in '
+             'files/etc/naos-core/device.ini to the desired container path. Imported manifests: ' + ', '.join(candidates))
+    selected = candidates[0]
+    name = selected.lstrip('/')
+    rootfs = str(PurePosixPath(name).parent / 'rootfs')
+    _require(name in entries and entries[name].info.isfile() and rootfs in entries and entries[rootfs].info.isdir(),
+             'The selected preinstalled container requires a regular manifest.yml and adjacent rootfs: ' + selected)
+    updated = _container_ini(text, selected).encode('utf-8')
+    if entry is None:
+        _inline(entries, _CORE_CONFIG, updated, mode=0o600)
+    elif updated != text.encode('utf-8'):
+        info = copy.copy(entry.info)
+        info.size = len(updated)
+        info.pax_headers = {key: value for key, value in info.pax_headers.items() if key != 'size'}
+        _put(entries, _CORE_CONFIG, _TarEntry(info, updated))
+
+
 def prepare_rootfs(bundle, work, overlays=(), remove=(), ota_certificate=None, ssh_ca=None,
-                   metadata=None, epoch=0, source_archive=None):
+                   metadata=None, epoch=0, source_archive=None, local_apks=()):
     """Merge edits into a tar, preserving target ownership, nodes and links.
 
     Overlay files use their source permission bits; existing target ownership
@@ -612,8 +714,9 @@ def prepare_rootfs(bundle, work, overlays=(), remove=(), ota_certificate=None, s
     _require(original_source.is_file(), 'Input bundle lacks rootfs.tar.gz')
     before = collect_rootfs(original_source)
     source = Path(source_archive) if source_archive is not None else original_source
-    if source_archive is not None:
-        collect_rootfs(source)
+    installed = collect_rootfs(source) if source_archive is not None else before
+    container_manifests = _imported_container_manifests(installed, local_apks) if local_apks else ()
+    del installed
     evidence = _old_inventory(bundle)
     if evidence:
         packages = {(p['name'], p['version'], p.get('architecture', '')):p for p in evidence.get('packages', [])}
@@ -637,6 +740,7 @@ def prepare_rootfs(bundle, work, overlays=(), remove=(), ota_certificate=None, s
                 _remove_tree(entries, _path(name))
             for directory in overlays:
                 _add_overlay(entries, directory)
+            _configure_imported_container(entries, archive, container_manifests)
             for name, certificate in (('etc/rauc/keyring.pem', ota_certificate),
                                       ('etc/ssh/ssh_ca_key.pub', ssh_ca)):
                 if certificate is not None:
